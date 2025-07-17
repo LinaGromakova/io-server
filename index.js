@@ -18,18 +18,15 @@ const io = new Server(server, {
     }
 })
 
-io.on('connection', (socket)=> {
-    socket.on('join', (data) => {
-       socket.join(data)
-        socket.emit('message', {
-            users
-        })
+io.on('connection', (socket) => {
+  
+  io.on('disconnect', ()=> {
+console.log('disconnect');
     })
+});
 
-    io.on('disconnect', ()=> {
-        console.log('disconnect');
-    })
-})
+
 server.listen(5000, ()=> {
     console.log('Server start');
+
 });
