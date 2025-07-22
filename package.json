@@ -1,14 +1,15 @@
 {
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "nanoid": "^5.1.5",
     "nodemon": "^3.1.10",
     "socket.io": "^4.8.1"
   },
   "name": "server-io",
   "version": "1.0.0",
   "main": "index.js",
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js",

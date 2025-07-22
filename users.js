@@ -48,7 +48,7 @@ export let users = [
     read: true,
     countMessage: 0,
   },
-];;
+];
 
 export const addUser = (user)=> {
     const userName = user.name.trim().toLowerCase();
