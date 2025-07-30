@@ -4,7 +4,6 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const app = express();
 const route = require('./route');
-const { users, addUser } = require('./users');
 
 app.use(express.json());
 app.use(cors({ origin: '*' }));
