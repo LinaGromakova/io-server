@@ -7,7 +7,10 @@ const app = express();
 const route = require('./route');
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
-const pool = require('./db');
+const pool = require('./models/db');
+
+app.use(cors({ origin: '*' }));
+app.use(express.json());
 
 app.use(
   session({
@@ -20,8 +23,7 @@ app.use(
     },
   })
 );
-app.use(express.json());
-app.use(cors({ origin: '*' }));
+
 app.use(route);
 
 const server = http.createServer(app);

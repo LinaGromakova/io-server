@@ -1,4 +1,5 @@
-const db = require('../db').default;
+const db = require('./db').default;
+const { nanoid } = require('nanoid');
 
 class Chat {
   static async findOrCreatePrivateChat(user1_id, user2_id) {
@@ -14,18 +15,16 @@ class Chat {
       return existingChat.rows[0];
     }
 
-    const chatResult = await db.query(
-      'INSERT INTO chats DEFAULT VALUES RETURNING *'
-    );
-    const chat = chatResult.rows[0];
-
+    const chat_id = nanoid();
+    await db.query('INSERT INTO chats (id) VALUES ($1)', [chat_id]);
     await db.query(
       'INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2), ($1, $3)',
-      [chat.id, user1_id, user2_id]
+      [chat_id, user1_id, user2_id]
     );
 
-    return chat;
+    return { id: chat_id };
   }
+
 
   static async getUserChats(user_id) {
     const result = await db.query(
@@ -56,3 +55,5 @@ class Chat {
     return result.rows;
   }
 }
+
+module.exports = Chat;
