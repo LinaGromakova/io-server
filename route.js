@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 const User = require('./models/User');
 const db = require('./models/db').default;
 const Chat = require('./models/Chat');
-
+const Blacklist = require('./models/BlackList');
 function authMiddleware(req, res, next) {
   if (req.session && req.session.authenticated) {
     next();
@@ -105,9 +105,51 @@ router.post('/login', async (req, res) => {
       .json({ message: 'Что-то пошло не так. Пожалуйста, попробуйте снова.' });
   }
 });
+router.get('/blacklist/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const usersBlackList = await Blacklist.getBlacklist(user_id);
+    res.status(200).json(usersBlackList);
+  } catch (error) {
+    res.status(500).json(error, 'Error');
+  }
+});
+router.post('/blacklist_add', async (req, res) => {
+  try {
+    const { user_id, blocked_user_id } = req.body;
+
+    await Blacklist.addToBlacklist(user_id, blocked_user_id);
+
+    res.status(200).json('success!');
+  } catch (error) {
+    res.status(500).json(error, 'Error');
+  }
+});
+router.delete(
+  '/delete_user_blacklist/:user_id/:blocked_user_id',
+  async (req, res) => {
+    try {
+      const { user_id, blocked_user_id } = req.params;
+      await Blacklist.removeFromBlacklist(user_id, blocked_user_id);
+      res.status(200).json('success!');
+    } catch (error) {
+      res.status(500).json(error, 'Unblock error');
+    }
+  }
+);
+router.delete('/delete_chat/:chat_id', async (req, res) => {
+  try {
+    const { chat_id } = req.params;
+    await Chat.deleteUserChat(chat_id);
+    res.status(200).json('success!');
+  } catch (error) {
+    res.status(500).json(error, 'phh nooo');
+  }
+});
 router.post('/start-chat', async (req, res) => {
   try {
     const { user1_id, user2_id } = req.body;
+
     const chat = await Chat.findOrCreatePrivateChat(user1_id, user2_id);
     res.json(chat);
   } catch (error) {

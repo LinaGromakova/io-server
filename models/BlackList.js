@@ -1,4 +1,4 @@
-const db = require('../db').default;
+const db = require('./db').default;
 
 class Blacklist {
   static async addToBlacklist(user_id, blocked_user_id) {
@@ -29,3 +29,4 @@ class Blacklist {
     return result.rows;
   }
 }
+module.exports = Blacklist;

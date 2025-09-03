@@ -25,7 +25,13 @@ class Chat {
     return { id: chat_id };
   }
 
-
+  static async deleteUserChat(chat_id) {
+    const result = await db.query(
+      'DELETE FROM chats WHERE id = $1 RETURNING *',
+      [chat_id]
+    );
+    return result.rows;
+  }
   static async getUserChats(user_id) {
     const result = await db.query(
       `SELECT 
