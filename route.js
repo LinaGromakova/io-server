@@ -5,6 +5,7 @@ const User = require('./models/User');
 const db = require('./models/db').default;
 const Chat = require('./models/Chat');
 const Blacklist = require('./models/BlackList');
+const Message = require('./models/Message');
 function authMiddleware(req, res, next) {
   if (req.session && req.session.authenticated) {
     next();
@@ -48,21 +49,16 @@ router.get('/:user_id', async (req, res) => {
   res.json(userChats);
 });
 //, authMiddleware
-router.get('/user/:user_id', async (req, res) => {
+router.get('/:chat_id/user/:user_id', async (req, res) => {
   try {
-    const id = req.params.user_id;
-    const currentUser = await User.findById(id);
+    const { chat_id, user_id } = req.params;
+    console.log(chat_id, user_id, 'im here');
+    const currentUser = await Chat.getChatInterlocutor(chat_id, user_id);
     res.status(200).json(currentUser);
   } catch (error) {
     res.status(400).json('oops');
   }
 });
-// router.get('/', authMiddleware, async (_req, res) => {
-//   const users = await db.query('SELECT * FROM users');
-//   console.log(users);
-//   res.send(users.rows[0]);
-// });
-//authMiddleware,
 router.get('/search/:searchValue', async (req, res) => {
   try {
     const name = req.params.searchValue;
@@ -125,6 +121,17 @@ router.post('/blacklist_add', async (req, res) => {
     res.status(500).json(error, 'Error');
   }
 });
+router.get('/chat/:chat_id', async (req, res) => {
+  try {
+    const { chat_id } = req.params;
+    const arrayMessage = await Message.getChatMessages(chat_id);
+
+    res.status(200).json(arrayMessage);
+  } catch (error) {
+    res.status(500).json(error, 'Error get chat');
+  }
+});
+
 router.delete(
   '/delete_user_blacklist/:user_id/:blocked_user_id',
   async (req, res) => {

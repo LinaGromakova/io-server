@@ -32,6 +32,24 @@ class Chat {
     );
     return result.rows;
   }
+
+  static async getChatInterlocutor(chat_id, user_id) {
+    const query = `
+        SELECT 
+          u.id,
+          u.name, 
+          u.login,
+          u.image,
+          u.online,
+          u.last_seen
+        FROM users u
+        JOIN chat_participants cp ON u.id = cp.user_id
+        WHERE cp.chat_id = $1 AND cp.user_id != $2
+      `;
+
+    const result = await db.query(query, [chat_id, user_id]);
+    return result.rows[0]; // Возвращаем первого собеседника
+  }
   static async getUserChats(user_id) {
     const result = await db.query(
       `SELECT 
