@@ -9,8 +9,20 @@ const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const pool = require('./models/db');
 const Message = require('./models/Message');
+const path = require('path');
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res, path) => {
+      if (path.endsWith('.png')) {
+        res.setHeader('Content-Type', 'image/png');
+      }
+    },
+  })
+);
 
 app.use(
   session({

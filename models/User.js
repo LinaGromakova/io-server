@@ -10,7 +10,16 @@ class User {
     );
     return result.rows[0];
   }
-
+  static async updateAvatar(user_id, avatar_url) {
+    const result = await db.query(
+      `UPDATE users 
+       SET image = $1
+       WHERE id = $2 
+       RETURNING image`,
+      [avatar_url, user_id]
+    );
+    return result.rows[0];
+  }
   static async findByLogin(login) {
     const result = await db.query('SELECT * FROM users WHERE login = $1', [
       login,

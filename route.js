@@ -6,6 +6,9 @@ const db = require('./models/db').default;
 const Chat = require('./models/Chat');
 const Blacklist = require('./models/BlackList');
 const Message = require('./models/Message');
+const upload = require('./middleware/upload');
+const fs = require('fs');
+
 function authMiddleware(req, res, next) {
   if (req.session && req.session.authenticated) {
     next();
@@ -161,6 +164,36 @@ router.post('/start-chat', async (req, res) => {
     res.json(chat);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/avatar', upload.single('avatar'), async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    if (!user_id) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+    const updatedUser = await User.updateAvatar(user_id, avatarUrl);
+
+    res.json({
+      success: true,
+      avatarUrl: avatarUrl,
+      user: updatedUser,
+    });
+  } catch (error) {
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: error.message, details: error.message });
   }
 });
 
