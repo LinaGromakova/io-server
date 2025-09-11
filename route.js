@@ -167,6 +167,15 @@ router.post('/start-chat', async (req, res) => {
   }
 });
 
+router.put('/profile/name', async (req, res) => {
+  try {
+    const { user_id, newName } = req.body;
+    const updateUser = await User.updateName(user_id, newName);
+    res.status(200).json('Success', updateUser);
+  } catch (error) {
+    console.log('Error', error);
+  }
+});
 router.post('/avatar', upload.single('avatar'), async (req, res) => {
   try {
     const { user_id } = req.body;

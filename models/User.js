@@ -20,6 +20,27 @@ class User {
     );
     return result.rows[0];
   }
+
+  static async updateName(userId, newName) {
+    try {
+      const result = await db.query(
+        `UPDATE users 
+         SET name = $1
+         WHERE id = $2 
+         RETURNING id, name, login, image, online, created_at`,
+        [newName, userId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error updating name:', error);
+      throw error;
+    }
+  }
   static async findByLogin(login) {
     const result = await db.query('SELECT * FROM users WHERE login = $1', [
       login,
