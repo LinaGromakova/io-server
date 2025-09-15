@@ -9,7 +9,15 @@ class Blacklist {
     );
     return result.rows[0];
   }
-
+  static async checkBlackList(user1_id, user2_id) {
+    const result = await db.query(
+      `SELECT * FROM blacklist 
+     WHERE (user_id = $1 AND blocked_user_id = $2)
+        OR (user_id = $2 AND blocked_user_id = $1)`,
+      [user1_id, user2_id]
+    );
+    return result.rows[0];
+  }
   static async removeFromBlacklist(user_id, blocked_user_id) {
     const result = await db.query(
       'DELETE FROM blacklist WHERE user_id = $1 AND blocked_user_id = $2 RETURNING *',

@@ -57,6 +57,7 @@ router.get('/:chat_id/user/:user_id', async (req, res) => {
     const { chat_id, user_id } = req.params;
     console.log(chat_id, user_id, 'im here');
     const currentUser = await Chat.getChatInterlocutor(chat_id, user_id);
+
     res.status(200).json(currentUser);
   } catch (error) {
     res.status(400).json('oops');
@@ -156,6 +157,15 @@ router.delete('/delete_chat/:chat_id', async (req, res) => {
     res.status(500).json(error, 'phh nooo');
   }
 });
+router.get('/check_blacklist/:user1_id/:user2_id', async (req, res) => {
+  try {
+    const { user1_id, user2_id } = req.params;
+    const check = await Blacklist.checkBlackList(user1_id, user2_id);
+    res.status(200).json(check);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 router.post('/start-chat', async (req, res) => {
   try {
     const { user1_id, user2_id } = req.body;
@@ -171,7 +181,7 @@ router.put('/profile/name', async (req, res) => {
   try {
     const { user_id, newName } = req.body;
     const updateUser = await User.updateName(user_id, newName);
-    res.status(200).json('Success', updateUser);
+    res.status(200).json(updateUser.name);
   } catch (error) {
     console.log('Error', error);
   }
