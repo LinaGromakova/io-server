@@ -6,12 +6,33 @@ const cors = require('cors');
 const app = express();
 const route = require('./route');
 const session = require('express-session');
-const PgSession = require('connect-pg-simple')(session);
-const pool = require('./models/db');
 const Message = require('./models/Message');
 const path = require('path');
-app.use(cors({ origin: '*' }));
+const { default: pool } = require('./models/db');
+const PgStore = require('connect-pg-simple')(session);
+
+app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json());
+
+app.use(
+  session({
+    store: new PgStore({
+      pool: pool,
+      tableName: 'session',
+      createTableIfMissing: true,
+    }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 1000 * 60 * 60 * 24,
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+    },
+    name: 'sid',
+  })
+);
 
 app.use(
   '/uploads',
@@ -20,18 +41,6 @@ app.use(
       if (path.endsWith('.png')) {
         res.setHeader('Content-Type', 'image/png');
       }
-    },
-  })
-);
-
-app.use(
-  session({
-    store: new PgSession({ pool }),
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 1000 * 60 * 60 * 24,
     },
   })
 );

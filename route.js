@@ -2,48 +2,80 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const User = require('./models/User');
-const db = require('./models/db').default;
 const Chat = require('./models/Chat');
 const Blacklist = require('./models/BlackList');
 const Message = require('./models/Message');
 const upload = require('./middleware/upload');
 const fs = require('fs');
 
-function authMiddleware(req, res, next) {
-  if (req.session && req.session.authenticated) {
-    next();
-  } else {
-    res.redirect('/login');
+router.get('/session-check', (req, res) => {
+  try {
+    if (req.session.user) {
+      res
+        .status(200)
+        .json({ data: 'protected data', user_id: req.session.user });
+    } else {
+      res.status(401).json(401);
+    }
+  } catch (error) {
+    res.status(500).json('Server error');
+    console.log('Error check session', error);
   }
-}
-
+});
+router.post('/logout', (req, res) => {
+  try {
+    req.session.destroy((error) => {
+      if (error) {
+        console.log(error);
+        return res.status(500).json({ message: 'Server error' });
+      }
+      res.clearCookie('sid');
+      res.json({
+        message: 'Выход выполнен',
+        authenticated: false,
+      });
+    });
+  } catch (error) {
+    console.log(error, 'Error logout');
+  }
+});
 router.post('/register', async (req, res) => {
   try {
     const { login, name, password } = req.body;
     const loginExists = await User.checkLoginExists(login);
 
     if (loginExists) {
-      return res.status(409).json('Неверный логин, попробуйте другой');
+      return res
+        .status(409)
+        .json({ message: 'Неверный логин, попробуйте другой' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userData = { name, login, passwordHash, image: null };
 
     const user = await User.createUser(userData);
-    const { password_hash: _, ...userWithoutPassword } = user;
+    const { password_hash, login: _, ...userWithoutPassword } = user;
 
-    res.status(200).json({
-      message: `Добро пожаловать, ${name}`,
-      user: userWithoutPassword,
+    req.session.user = user.id;
+    req.session.authenticated = true;
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+        return res.status(500).json({ message: 'Ошибка сервера' });
+      }
+
+      return res.status(200).json({
+        message: `Добро пожаловать, ${name}`,
+        user: userWithoutPassword,
+        auth: true,
+        sessionId: req.sessionID,
+      });
     });
   } catch (error) {
-    console.log(error);
-    res
+    console.error('Ошибка регистрации', error);
+    return res
       .status(500)
-      .json(
-        'Возникли технически шоколадки, пожалуйста, попробуйте позже',
-        error
-      );
+      .json({ message: 'Что-то пошло не так. Пожалуйста, попробуйте снова.' });
   }
 });
 router.get('/:user_id', async (req, res) => {
@@ -51,13 +83,12 @@ router.get('/:user_id', async (req, res) => {
   const userChats = await Chat.getUserChats(id);
   res.json(userChats);
 });
-//, authMiddleware
 router.get('/:chat_id/user/:user_id', async (req, res) => {
   try {
     const { chat_id, user_id } = req.params;
     console.log(chat_id, user_id, 'im here');
     const currentUser = await Chat.getChatInterlocutor(chat_id, user_id);
-
+    console.log(currentUser);
     res.status(200).json(currentUser);
   } catch (error) {
     res.status(400).json('oops');
@@ -80,23 +111,33 @@ router.post('/login', async (req, res) => {
     const { login, password } = req.body;
     const currentUser = await User.findByLogin(login);
     if (!currentUser) {
-      return res.status(401).json({ message: 'Неверный логин или пароль' });
+      return res.status(401).json({ message: 'Пользователь не авторизован' });
     }
     const validPassword = await bcrypt.compare(
       password,
       currentUser.password_hash
     );
     if (!validPassword) {
-      return res.status(401).json({ message: 'Неверный логин или пароль' });
+      return res.status(401).json({ message: 'Пользователь не авторизован' });
     }
+
     await User.updateOnlineStatus(currentUser.id, true);
-    req.session.user_id = currentUser.id;
+
+    const { password_hash, login: _, ...userWithoutPassword } = currentUser;
+    req.session.user = currentUser.id;
     req.session.authenticated = true;
-    const { password_hash, ...userWithoutPassword } = currentUser;
-    return res.status(200).json({
-      message: `Мы скучали, ${currentUser.name}`,
-      auth: req.session.authenticated,
-      user: userWithoutPassword,
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+        return res.status(500).json({ message: 'Ошибка сервера' });
+      }
+
+      return res.status(200).json({
+        message: `Мы скучали, ${currentUser.name}`,
+        auth: true,
+        user: userWithoutPassword,
+        sessionId: req.sessionID, // можно вернуть ID сессии
+      });
     });
   } catch (error) {
     console.error('Ошибка авторизации:', error);
