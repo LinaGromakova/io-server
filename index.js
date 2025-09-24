@@ -9,6 +9,7 @@ const session = require('express-session');
 const Message = require('./models/Message');
 const path = require('path');
 const { default: pool } = require('./models/db');
+const User = require('./models/User');
 const PgStore = require('connect-pg-simple')(session);
 
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
@@ -44,17 +45,16 @@ app.use(
     },
   })
 );
-
-app.use(route);
-
 const server = http.createServer(app);
-
 const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
   },
 });
+
+app.set('io', io);
+app.use(route);
 
 io.on('connection', (socket) => {
   socket.on('join_chat', async ({ chat_id, user_id }) => {
@@ -79,6 +79,18 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('connect_app', async (data) => {
+    socket.join('online-users');
+    const { user_id, online } = data;
+    socket.data.user_id = user_id;
+
+    await User.updateOnlineStatus(user_id, online);
+    io.to('online-users').emit('update-online', {
+      user_id: user_id,
+      online: online,
+    });
+  });
+
   socket.on('send_message', async (data) => {
     try {
       const canSend = await Message.checkChatParticipation(
@@ -87,21 +99,33 @@ io.on('connection', (socket) => {
       );
 
       if (!canSend) {
-        console.log('not part');
+        // console.log('not part');
         return;
       }
       const savedMessage = await Message.create(data);
-      console.log(savedMessage);
       io.to(data.chat_id).emit('new_message', savedMessage);
     } catch (error) {
       console.log(error);
     }
   });
-  socket.on('leave_chat', ({ chat_id, user_id }) => {
+  socket.on('leave_chat', ({ chat_id }) => {
     socket.leave(chat_id);
-    console.log(`User ${user_id} left chat ${chat_id}`);
   });
-  socket.on('disconnect', () => {
+  socket.on('read_messages', async (chat_id, user_id) => {
+    try {
+      const updatedMessages = await Message.markAsRead(chat_id, user_id);
+      io.to(chat_id).emit('messages_read', { idx: [updatedMessages.id] });
+    } catch (error) {
+      console.log('Error read message', error);
+    }
+  });
+  socket.on('disconnect', async () => {
+    const user_id = socket.data.user_id;
+    await User.updateOnlineStatus(user_id, false);
+    io.to('online-users').emit('update-online', {
+      user_id: user_id,
+      online: false,
+    });
     console.log('disconnect');
   });
 });

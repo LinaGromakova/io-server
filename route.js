@@ -24,12 +24,20 @@ router.get('/session-check', (req, res) => {
 });
 router.post('/logout', (req, res) => {
   try {
+    User.updateOnlineStatus(req.session.user, false);
+
+    req.app.get('io').to('online-users').emit('update-online', {
+      user_id: req.session.user,
+      online: false,
+    });
+
     req.session.destroy((error) => {
       if (error) {
         console.log(error);
         return res.status(500).json({ message: 'Server error' });
       }
       res.clearCookie('sid');
+
       res.json({
         message: 'Выход выполнен',
         authenticated: false,
@@ -68,7 +76,6 @@ router.post('/register', async (req, res) => {
         message: `Добро пожаловать, ${name}`,
         user: userWithoutPassword,
         auth: true,
-        sessionId: req.sessionID,
       });
     });
   } catch (error) {
@@ -78,6 +85,16 @@ router.post('/register', async (req, res) => {
       .json({ message: 'Что-то пошло не так. Пожалуйста, попробуйте снова.' });
   }
 });
+router.get('/user/:user_id', async (req, res) => {
+  const id = req.params.user_id;
+  const user = await User.findById(id);
+
+  res.json(user);
+});
+// router.put('/chat/message_read', async (req, res) => {
+// const {user_id, chat_id} = req.body;
+// const
+// })
 router.get('/:user_id', async (req, res) => {
   const id = req.params.user_id;
   const userChats = await Chat.getUserChats(id);
@@ -121,8 +138,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Пользователь не авторизован' });
     }
 
-    await User.updateOnlineStatus(currentUser.id, true);
-
     const { password_hash, login: _, ...userWithoutPassword } = currentUser;
     req.session.user = currentUser.id;
     req.session.authenticated = true;
@@ -136,7 +151,6 @@ router.post('/login', async (req, res) => {
         message: `Мы скучали, ${currentUser.name}`,
         auth: true,
         user: userWithoutPassword,
-        sessionId: req.sessionID, // можно вернуть ID сессии
       });
     });
   } catch (error) {
@@ -170,7 +184,6 @@ router.get('/chat/:chat_id', async (req, res) => {
   try {
     const { chat_id } = req.params;
     const arrayMessage = await Message.getChatMessages(chat_id);
-
     res.status(200).json(arrayMessage);
   } catch (error) {
     res.status(500).json(error, 'Error get chat');
@@ -212,6 +225,7 @@ router.post('/start-chat', async (req, res) => {
     const { user1_id, user2_id } = req.body;
 
     const chat = await Chat.findOrCreatePrivateChat(user1_id, user2_id);
+    
     res.json(chat);
   } catch (error) {
     res.status(500).json({ error: error.message });
