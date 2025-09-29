@@ -10,6 +10,7 @@ const Message = require('./models/Message');
 const path = require('path');
 const { default: pool } = require('./models/db');
 const User = require('./models/User');
+const Chat = require('./models/Chat');
 const PgStore = require('connect-pg-simple')(session);
 
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
@@ -57,12 +58,22 @@ app.set('io', io);
 app.use(route);
 
 io.on('connection', (socket) => {
+  socket.on('connect_app', async (data) => {
+    const { user_id, online } = data;
+    socket.join(['online-users', user_id]);
+    socket.data.user_id = user_id;
+
+    await User.updateOnlineStatus(user_id, online);
+    io.to('online-users').emit('update-online', {
+      user_id: user_id,
+      online: online,
+    });
+  });
   socket.on('join_chat', async ({ chat_id, user_id }) => {
     try {
       if (!chat_id) {
         return console.log('error');
       }
-      console.log(user_id);
       const isParticipant = await Message.checkChatParticipation(
         user_id,
         chat_id
@@ -72,23 +83,12 @@ io.on('connection', (socket) => {
         return;
       }
       socket.join(chat_id);
-      console.log('join success', chat_id);
+      const partArr = await Chat.getAllPartChats(chat_id);
+      socket.data.partArr = partArr;
     } catch (error) {
       console.log(error);
       return;
     }
-  });
-
-  socket.on('connect_app', async (data) => {
-    socket.join('online-users');
-    const { user_id, online } = data;
-    socket.data.user_id = user_id;
-
-    await User.updateOnlineStatus(user_id, online);
-    io.to('online-users').emit('update-online', {
-      user_id: user_id,
-      online: online,
-    });
   });
 
   socket.on('send_message', async (data) => {
@@ -97,12 +97,23 @@ io.on('connection', (socket) => {
         data.sender_id,
         data.chat_id
       );
-
       if (!canSend) {
-        // console.log('not part');
         return;
       }
+
       const savedMessage = await Message.create(data);
+      const partArr = await Chat.getAllPartChats(data.chat_id);
+      const user_id = partArr.find((id) => id !== data.sender_id);
+      const unreadCount = await Message.getUnreadCount(data.chat_id, user_id);
+
+      console.log(unreadCount, 'count send');
+      io.to(user_id).emit('inc-unread-message', {
+        count: unreadCount,
+        chat_id: data.chat_id,
+      });
+      partArr.forEach((id) => {
+        io.to(id).emit('update-last-message', savedMessage);
+      });
       io.to(data.chat_id).emit('new_message', savedMessage);
     } catch (error) {
       console.log(error);
@@ -114,7 +125,19 @@ io.on('connection', (socket) => {
   socket.on('read_messages', async (chat_id, user_id) => {
     try {
       const updatedMessages = await Message.markAsRead(chat_id, user_id);
-      io.to(chat_id).emit('messages_read', { idx: [updatedMessages.id] });
+      const partArr = await Chat.getAllPartChats(chat_id);
+
+      const unreadCount = await Message.getUnreadCount(chat_id, user_id);
+      const updateChatMessage = updatedMessages[updatedMessages.length - 1];
+      partArr.forEach((id) => {
+        io.to(id).emit('update-read-message', updateChatMessage);
+        io.to(id).emit('unread_updated', {
+          count: unreadCount,
+          chat_id: chat_id,
+        });
+      });
+
+      io.to(chat_id).emit('messages_read', updatedMessages);
     } catch (error) {
       console.log('Error read message', error);
     }

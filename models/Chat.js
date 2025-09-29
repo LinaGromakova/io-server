@@ -14,15 +14,72 @@ class Chat {
     if (existingChat.rows[0]) {
       return existingChat.rows[0];
     }
-
     const chat_id = nanoid();
-    await db.query('INSERT INTO chats (id) VALUES ($1)', [chat_id]);
-    await db.query(
-      'INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2), ($1, $3)',
-      [chat_id, user1_id, user2_id]
+
+    const result = await db.query(
+      `WITH existing_chat AS (
+       SELECT c.id as chat_id
+       FROM chats c
+       JOIN chat_participants cp1 ON c.id = cp1.chat_id AND cp1.user_id = $1
+       JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp2.user_id = $2
+     ),
+     new_chat AS (
+       INSERT INTO chats (id)
+       SELECT $3
+       WHERE NOT EXISTS (SELECT 1 FROM existing_chat)
+       RETURNING id
+     ),
+     insert_participants AS (
+       INSERT INTO chat_participants (chat_id, user_id)
+       SELECT COALESCE(ec.chat_id, nc.id), unnest(ARRAY[$1, $2])
+       FROM existing_chat ec FULL OUTER JOIN new_chat nc ON true
+       WHERE NOT EXISTS (SELECT 1 FROM existing_chat)
+     ),
+     user1_data AS (
+       SELECT id, name, image, online FROM users WHERE id = $2
+     ),
+     user2_data AS (
+       SELECT id, name, image, online FROM users WHERE id = $1
+     )
+     SELECT 
+       COALESCE(ec.chat_id, nc.id) as chat_id,
+       (SELECT name FROM user1_data) as user1_name,
+       (SELECT image FROM user1_data) as user1_image,
+       (SELECT online FROM user1_data) as user1_online,
+       (SELECT name FROM user2_data) as user2_name,
+       (SELECT image FROM user2_data) as user2_image,
+       (SELECT online FROM user2_data) as user2_online
+     FROM existing_chat ec 
+     FULL OUTER JOIN new_chat nc ON true`,
+      [user1_id, user2_id, chat_id]
     );
 
-    return { id: chat_id };
+    const row = result.rows[0];
+
+    return {
+      forUser1: {
+        chat_id: row.chat_id,
+        user_id: user2_id,
+        name: row.user1_name,
+        image: row.user1_image,
+        online: row.user1_online,
+        lastMessage: null,
+        lastCreate: null,
+        unreadCount: '0',
+        read: null,
+      },
+      forUser2: {
+        chat_id: row.chat_id,
+        user_id: user1_id,
+        name: row.user2_name,
+        image: row.user2_image,
+        online: row.user2_online,
+        lastMessage: null,
+        lastCreate: null,
+        unreadCount: '0',
+        read: null,
+      },
+    };
   }
 
   static async deleteUserChat(chat_id) {
@@ -31,6 +88,15 @@ class Chat {
       [chat_id]
     );
     return result.rows;
+  }
+  static async getAllPartChats(chat_id) {
+    const result = await db.query(
+      `SELECT user_id 
+FROM chat_participants 
+WHERE chat_id = $1;`,
+      [chat_id]
+    );
+    return result.rows.map((user) => user.user_id);
   }
 
   static async getChatInterlocutor(chat_id, user_id) {
@@ -48,7 +114,7 @@ class Chat {
       `;
 
     const result = await db.query(query, [chat_id, user_id]);
-    return result.rows[0]; // Возвращаем первого собеседника
+    return result.rows[0];
   }
   static async getUserChats(user_id) {
     const result = await db.query(
@@ -58,6 +124,7 @@ class Chat {
          u.name,
          u.image,
          u.online,
+         m.is_read as last_message_is_read,
          m.content as last_message,
          m.created_at as last_message_at,
          (SELECT COUNT(*) FROM messages WHERE chat_id = c.id AND is_read = FALSE AND sender_id != $1) as unread_count
@@ -65,7 +132,7 @@ class Chat {
        JOIN chat_participants cp ON c.id = cp.chat_id
        JOIN users u ON u.id = cp.user_id
        LEFT JOIN LATERAL (
-         SELECT content, created_at FROM messages 
+         SELECT content, created_at, is_read FROM messages 
          WHERE chat_id = c.id 
          ORDER BY created_at DESC 
          LIMIT 1

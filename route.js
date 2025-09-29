@@ -15,6 +15,11 @@ router.get('/session-check', (req, res) => {
         .status(200)
         .json({ data: 'protected data', user_id: req.session.user });
     } else {
+      User.updateOnlineStatus(req.session.user, false);
+      req.app.get('io').to('online-users').emit('update-online', {
+        user_id: req.session.user,
+        online: false,
+      });
       res.status(401).json(401);
     }
   } catch (error) {
@@ -71,7 +76,11 @@ router.post('/register', async (req, res) => {
         console.error('Ошибка сохранения сессии:', err);
         return res.status(500).json({ message: 'Ошибка сервера' });
       }
-
+      User.updateOnlineStatus(req.session.user, false);
+      req.app.get('io').to('online-users').emit('update-online', {
+        user_id: user.id,
+        online: true,
+      });
       return res.status(200).json({
         message: `Добро пожаловать, ${name}`,
         user: userWithoutPassword,
@@ -91,10 +100,6 @@ router.get('/user/:user_id', async (req, res) => {
 
   res.json(user);
 });
-// router.put('/chat/message_read', async (req, res) => {
-// const {user_id, chat_id} = req.body;
-// const
-// })
 router.get('/:user_id', async (req, res) => {
   const id = req.params.user_id;
   const userChats = await Chat.getUserChats(id);
@@ -103,9 +108,8 @@ router.get('/:user_id', async (req, res) => {
 router.get('/:chat_id/user/:user_id', async (req, res) => {
   try {
     const { chat_id, user_id } = req.params;
-    console.log(chat_id, user_id, 'im here');
+
     const currentUser = await Chat.getChatInterlocutor(chat_id, user_id);
-    console.log(currentUser);
     res.status(200).json(currentUser);
   } catch (error) {
     res.status(400).json('oops');
@@ -174,7 +178,10 @@ router.post('/blacklist_add', async (req, res) => {
     const { user_id, blocked_user_id } = req.body;
 
     await Blacklist.addToBlacklist(user_id, blocked_user_id);
-
+    req.app.get('io').to(user_id).to(blocked_user_id).emit('add-blacklist', {
+      user_id: user_id,
+      blocked_user_id: blocked_user_id,
+    });
     res.status(200).json('success!');
   } catch (error) {
     res.status(500).json(error, 'Error');
@@ -195,7 +202,16 @@ router.delete(
   async (req, res) => {
     try {
       const { user_id, blocked_user_id } = req.params;
-      await Blacklist.removeFromBlacklist(user_id, blocked_user_id);
+      const result = await Blacklist.removeFromBlacklist(
+        user_id,
+        blocked_user_id
+      );
+      console.log(result, user_id, blocked_user_id);
+      req.app
+        .get('io')
+        .to(user_id)
+        .to(blocked_user_id)
+        .emit('delete-blacklist', result);
       res.status(200).json('success!');
     } catch (error) {
       res.status(500).json(error, 'Unblock error');
@@ -205,6 +221,10 @@ router.delete(
 router.delete('/delete_chat/:chat_id', async (req, res) => {
   try {
     const { chat_id } = req.params;
+    const partArr = await Chat.getAllPartChats(chat_id);
+    partArr.forEach((id) => {
+      req.app.get('io').to(id).emit('delete-chat', chat_id);
+    });
     await Chat.deleteUserChat(chat_id);
     res.status(200).json('success!');
   } catch (error) {
@@ -215,6 +235,7 @@ router.get('/check_blacklist/:user1_id/:user2_id', async (req, res) => {
   try {
     const { user1_id, user2_id } = req.params;
     const check = await Blacklist.checkBlackList(user1_id, user2_id);
+
     res.status(200).json(check);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -224,9 +245,16 @@ router.post('/start-chat', async (req, res) => {
   try {
     const { user1_id, user2_id } = req.body;
 
-    const chat = await Chat.findOrCreatePrivateChat(user1_id, user2_id);
-    
-    res.json(chat);
+    const result = await Chat.findOrCreatePrivateChat(user1_id, user2_id);
+
+    if (result.id) {
+      res.json(result.id);
+    } else {
+      const { forUser1, forUser2 } = result;
+      req.app.get('io').to(user1_id).emit('start-chat', forUser1);
+      req.app.get('io').to(user2_id).emit('start-chat', forUser2);
+      res.json(forUser1.chat_id);
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -236,6 +264,7 @@ router.put('/profile/name', async (req, res) => {
   try {
     const { user_id, newName } = req.body;
     const updateUser = await User.updateName(user_id, newName);
+    req.app.get('io').to('online-users').emit('update-name', updateUser);
     res.status(200).json(updateUser.name);
   } catch (error) {
     console.log('Error', error);
@@ -257,6 +286,8 @@ router.post('/avatar', upload.single('avatar'), async (req, res) => {
     const avatarUrl = `/uploads/avatars/${req.file.filename}`;
 
     const updatedUser = await User.updateAvatar(user_id, avatarUrl);
+
+    req.app.get('io').to('online-users').emit('update-image', updatedUser);
 
     res.json({
       success: true,

@@ -15,7 +15,7 @@ class User {
       `UPDATE users 
        SET image = $1
        WHERE id = $2 
-       RETURNING image`,
+       RETURNING *`,
       [avatar_url, user_id]
     );
     return result.rows[0];

@@ -19,6 +19,17 @@ class Message {
     );
     return result.rows.length > 0;
   }
+  static async getUnreadCount(chat_id, user_id) {
+    const result = await db.query(
+      `SELECT COUNT(*) as unread_count
+     FROM messages 
+     WHERE chat_id = $1 
+     AND is_read = FALSE 
+     AND sender_id != $2`,
+      [chat_id, user_id]
+    );
+    return parseInt(result.rows[0].unread_count);
+  }
   static async getChatMessages(chat_id) {
     const result = await db.query(
       `SELECT m.*, u.name as sender_name, u.image as sender_image
